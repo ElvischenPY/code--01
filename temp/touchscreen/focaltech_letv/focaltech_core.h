@@ -67,7 +67,7 @@
 #include <linux/netdevice.h>
 #include <linux/unistd.h>
 #include <linux/ioctl.h>
-
+#include <linux/letvs.h>
 
 /*******************************************************************************
 * Private constant and macro definitions using #define
@@ -216,6 +216,7 @@ struct fts_ts_data {
 	struct workqueue_struct *ts_workqueue;
 	struct regulator *vdd;
 	struct regulator *vcc_i2c;
+	struct letv_classdev cdev;
 	char fw_name[FTS_FW_NAME_MAX_LEN];
 	bool loading_fw;
 	u8 family_id;

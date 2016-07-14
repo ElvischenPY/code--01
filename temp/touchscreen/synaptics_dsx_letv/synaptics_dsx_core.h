@@ -39,6 +39,10 @@
 #define SYNAPTICS_DSX_DRIVER_PRODUCT (SYNAPTICS_DS4 | SYNAPTICS_DS5)
 #define SYNAPTICS_DSX_DRIVER_VERSION 0x2050
 
+#ifdef CONFIG_PRODUCT_LE_ZL1
+#define OPEN_CHARGE_BIT
+#endif
+
 #include <linux/version.h>
 #ifdef CONFIG_FB
 #include <linux/notifier.h>
@@ -47,7 +51,7 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
-
+#include <linux/letvs.h>
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 38))
 #define KERNEL_ABOVE_2_6_38
 #endif
@@ -315,6 +319,7 @@ struct synaptics_rmi4_data {
 	struct platform_device *pdev;
 	struct input_dev *input_dev;
 	struct input_dev *stylus_dev;
+	struct letv_classdev cdev;
 	const struct synaptics_dsx_hw_interface *hw_if;
 	struct synaptics_rmi4_device_info rmi4_mod_info;
 	struct kobject *board_prop_dir;
@@ -326,6 +331,12 @@ struct synaptics_rmi4_data {
 	struct mutex rmi4_exp_init_mutex;
 	struct delayed_work rb_work;
 	struct workqueue_struct *rb_workqueue;
+#ifdef OPEN_CHARGE_BIT
+	bool is_charging;
+	struct delayed_work  charge_work;
+	struct workqueue_struct *charge_workqueue;
+	struct notifier_block 	power_notifier;
+#endif
 #ifdef CONFIG_FB
 	struct notifier_block fb_notifier;
 	struct work_struct fb_notify_work;
@@ -353,6 +364,7 @@ struct synaptics_rmi4_data {
 	unsigned short f01_ctrl_base_addr;
 	unsigned short f01_data_base_addr;
 	unsigned int firmware_id;
+	unsigned char product_id_string[PRODUCT_ID_SIZE + 1];
 	unsigned int tp_status;
 	int irq;
 	int sensor_max_x;
@@ -383,11 +395,6 @@ struct synaptics_rmi4_data {
 	struct pinctrl_state *pinctrl_state_release;
 };
 
-struct synaptics_sys_class_data {
-	struct device *synaptics_tp_dev;
-	struct class *synaptics_class;
-	struct synaptics_rmi4_data *data;
-};
 
 struct synaptics_dsx_bus_access {
 	unsigned char type;

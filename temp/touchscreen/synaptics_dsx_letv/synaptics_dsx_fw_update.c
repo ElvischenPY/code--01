@@ -179,8 +179,10 @@ static ssize_t fwu_sysfs_guest_code_block_count_show(struct device *dev,
 
 static ssize_t fwu_sysfs_write_guest_code_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
-static ssize_t fwu_sysfs_config_id_show(struct device *dev,
+ ssize_t fwu_sysfs_config_id_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
+
+
 enum f34_version {
 	F34_V0 = 0,
 	F34_V1,
@@ -2262,6 +2264,22 @@ static int fwu_get_device_config_id(void)
 	return 0;
 }
 
+u32 synaptics_rmi4_get_config_id(void)
+{
+	int retval;
+	int i;
+	retval = fwu_get_device_config_id();
+	if (retval < 0) {
+		pr_err("%s: Failed to read device config ID\n",__func__);
+		return false;
+	}
+	retval = 0;
+	for(i=0;i<4;i++){
+		retval = retval <<8 | fwu->config_id[i];
+	}
+	return retval;
+}
+
 static enum flash_area fwu_go_nogo(void)
 {
 	int retval;
@@ -2325,7 +2343,7 @@ static enum flash_area fwu_go_nogo(void)
 	else
 		config_id_size = V5V6_CONFIG_ID_SIZE;
 
-	for (ii = 0; ii < config_id_size; ii++) {
+	for (ii = 3; ii < config_id_size; ii++) {
 		if (fwu->img.ui_config.data[ii] > fwu->config_id[ii]) {
 			flash_area = UI_CONFIG;
 			goto exit;
@@ -3422,9 +3440,14 @@ static int fwu_start_reflash(void)
 	pr_notice("%s: Start of reflash process\n", __func__);
 
 	if (fwu->image == NULL) {
-		retval = snprintf(fwu->image_name, MAX_IMAGE_NAME_LEN,
-				"synaptics/startup_fw_update_%s.img",
-				rmi4_data->rmi4_mod_info.product_id_string);
+		if(likely(strcmp(rmi4_data->rmi4_mod_info.product_id_string,"s3320"))){
+			retval = snprintf(fwu->image_name, MAX_IMAGE_NAME_LEN,
+					"synaptics/startup_fw_update_%s.img",
+					rmi4_data->rmi4_mod_info.product_id_string);
+		}else{
+			retval = snprintf(fwu->image_name, MAX_IMAGE_NAME_LEN,
+					"synaptics/startup_fw_update_%s.img","ZL1-0A-01");
+		}
 		if (retval < 0) {
 			dev_err(rmi4_data->pdev->dev.parent,
 					"%s: Failed to copy image file name\n",
@@ -3819,6 +3842,47 @@ int synaptics_fw_updater(const unsigned char *fw_data)
 EXPORT_SYMBOL(synaptics_fw_updater);
 
 #ifdef DO_STARTUP_FW_UPDATE
+void read_customer_id(void)
+{
+	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;
+	unsigned short config_area = fwu->config_area;
+	int retval;
+
+	fwu->config_area = PM_CONFIG_AREA;
+	fwu_do_read_config();
+	fwu->config_area = config_area;
+
+	if (NULL != fwu->read_config_buf){
+		if(strlen(fwu->read_config_buf)){
+		retval = secure_memcpy(rmi4_data->rmi4_mod_info.product_id_string,
+				sizeof(rmi4_data->rmi4_mod_info.product_id_string),
+				fwu->read_config_buf,
+				strlen(fwu->read_config_buf),
+				strlen(fwu->read_config_buf));
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to copy product ID string from read_config_buf \n",
+					__func__);
+			}
+		retval = secure_memcpy(rmi4_data->product_id_string,
+				sizeof(rmi4_data->product_id_string),
+				rmi4_data->rmi4_mod_info.product_id_string,
+				strlen(rmi4_data->rmi4_mod_info.product_id_string),
+				strlen(rmi4_data->rmi4_mod_info.product_id_string));
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to copy product ID string from read_config_buf \n",
+					__func__);
+			}
+		}
+	}
+	else{
+		dev_err(rmi4_data->pdev->dev.parent,
+					"%s: fwu->read_config_buf is NULL \n",
+					__func__);
+	}
+}
+
 static void fwu_startup_fw_update_work(struct work_struct *work)
 {
 	static unsigned char do_once = 1;
@@ -3846,6 +3910,7 @@ static void fwu_startup_fw_update_work(struct work_struct *work)
 	}
 #endif
 
+	read_customer_id();
 	synaptics_fw_updater(NULL);
 
 	return;
@@ -4135,7 +4200,7 @@ static ssize_t fwu_sysfs_image_size_store(struct device *dev,
 	return count;
 }
 
-static ssize_t fwu_sysfs_config_id_show(struct device *dev,
+ ssize_t fwu_sysfs_config_id_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;

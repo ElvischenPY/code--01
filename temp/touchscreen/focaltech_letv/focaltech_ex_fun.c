@@ -457,6 +457,49 @@ static ssize_t fts_tpfwver_store(struct device *dev, struct device_attribute *at
 	/* place holder for future use */
 	return -EPERM;
 }
+
+/************************************************************************
+* Name: fts_tp_info_show
+* Brief:  show tp info
+* Input: device, device attribute, char buf
+* Output: no
+* Return: char number
+***********************************************************************/
+static ssize_t fts_tp_info_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	u8 fwver = 0;
+	ssize_t num_read_chars = 0;
+
+	mutex_lock(&fts_input_dev->mutex);
+	if (fts_read_reg(fts_i2c_client, FTS_REG_FW_VER, &fwver) < 0) {
+		mutex_unlock(&fts_input_dev->mutex);
+		return -1;
+	}
+
+	if (fwver == 0xFF || fwver == 0){
+		num_read_chars = snprintf(buf, PAGE_SIZE,"get tp fw version fail!\n");
+	}else{
+		num_read_chars = snprintf(buf, PAGE_SIZE, "<fts_ts>-<CHIP_ID: %#x>-<fw_id: %#x> \n",fts_updateinfo_curr.CHIP_ID,fwver);
+	}
+
+	mutex_unlock(&fts_input_dev->mutex);
+	return num_read_chars;
+}
+
+/************************************************************************
+* Name: fts_error_store
+* Brief:  no
+* Input: device, device attribute, char buf, char count
+* Output: no
+* Return: EPERM
+***********************************************************************/
+static  ssize_t fts_error_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	pr_err("%s Attempted to write to read-only attribute %s\n",
+	            __func__, attr->attr.name);
+	return -EPERM;
+}
 /************************************************************************
 * Name: fts_tpdriver_version_show
 * Brief:  show tp fw vwersion
@@ -720,6 +763,20 @@ static struct attribute_group fts_attribute_group = {
 	.attrs = fts_attributes
 };
 
+// add letvs sysfs at here
+static DEVICE_ATTR(tp_info, S_IRUGO, fts_tp_info_show, fts_error_store);
+static struct attribute *letvs_fts_attributes[] = {
+	&dev_attr_tp_info.attr,
+	NULL
+};
+static struct attribute_group letvs_fts_attribute_group = {
+	.attrs = letvs_fts_attributes
+};
+static const struct attribute_group *attr_groups[] ={
+	&letvs_fts_attribute_group,
+	NULL,
+};
+
 /************************************************************************
 * Name: fts_create_sysfs
 * Brief:  create sysfs for debug
@@ -730,18 +787,25 @@ static struct attribute_group fts_attribute_group = {
 int fts_create_sysfs(struct i2c_client * client)
 {
 	int err;
-	
+	struct fts_ts_data *data = fts_wq_data;
+
 	err = sysfs_create_group(&client->dev.kobj, &fts_attribute_group);
-	if (0 != err) 
-	{
+	if (0 != err) {
 		dev_err(&client->dev, "%s() - ERROR: sysfs_create_group() failed.\n", __func__);
 		sysfs_remove_group(&client->dev.kobj, &fts_attribute_group);
 		return -EIO;
-	} 
-	else 
-	{
+	} else {
 		pr_info("fts:%s() - sysfs_create_group() succeeded.\n",__func__);
 	}
+
+	data->cdev.name = "touchpanel";
+	data->cdev.groups = attr_groups;
+	 err = letv_classdev_register(&client->dev,&data->cdev);
+	 if(err){
+		dev_err(&client->dev, "Failure %d creating classdev\n",
+			err);
+	}
+
 	return err;
 }
 /************************************************************************
@@ -753,6 +817,9 @@ int fts_create_sysfs(struct i2c_client * client)
 ***********************************************************************/
 int fts_remove_sysfs(struct i2c_client * client)
 {
+	struct fts_ts_data *data = fts_wq_data;
+
 	sysfs_remove_group(&client->dev.kobj, &fts_attribute_group);
+	letv_classdev_unregister(&data->cdev);
 	return 0;
 }

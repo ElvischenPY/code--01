@@ -50,10 +50,6 @@
 #define FTS_SUSPEND_LEVEL 1
 #endif
 
-#if defined(CONFIG_LETV_HW_DEV_DCT)
-#include <linux/hw_dev_dec.h>
-#endif
-
 /*******************************************************************************
 * Private constant and macro definitions using #define
 *******************************************************************************/
@@ -124,7 +120,6 @@
 #define PINCTRL_STATE_SUSPEND	"pmx_ts_suspend"
 #define PINCTRL_STATE_RELEASE	"pmx_ts_release"
 
-int TP_chip_check;
 /*******************************************************************************
 * Private enumerations, structures and unions using typedef
 *******************************************************************************/
@@ -457,7 +452,6 @@ static irqreturn_t fts_ts_interrupt(int irq, void *dev_id)
 		pr_err("%s: Invalid fts_ts\n", __func__);
 		return IRQ_HANDLED;
 	}
-	disable_irq_nosync(fts_ts->client->irq);
 
 	fts_touch_irq_work();
 
@@ -516,6 +510,7 @@ static int fts_read_Touchdata(struct fts_ts_data *data)
 			return 1;
 	}
 	#endif
+	pr_err("%s%d --cbw-- buf=%p val=%d \n",__func__,__LINE__,buf,*buf);
 	ret = fts_i2c_read(data->client, buf, 1, buf, POINT_READ_BUF);
 	if (ret < 0) {
 		dev_err(&data->client->dev, "%s read touchdata failed.\n", __func__);
@@ -523,6 +518,7 @@ static int fts_read_Touchdata(struct fts_ts_data *data)
 	}
 
 	buf_count_add++;
+	pr_err("%s%d --cbw-- buf_count_add=%d  \n",__func__,__LINE__,buf_count_add);
 	memcpy( buf_touch_data+(((buf_count_add-1)%30)*POINT_READ_BUF), buf, sizeof(u8)*POINT_READ_BUF );
 
 	return 0;
@@ -567,6 +563,7 @@ static void fts_report_value(struct fts_ts_data *data)
 
 	buf_count_neg++;
 	
+	pr_err("%s%d --cbw-- buf_count_neg =%d  \n",__func__,__LINE__,buf_count_neg);
 	memcpy( buf,buf_touch_data+(((buf_count_neg-1)%30)*POINT_READ_BUF), sizeof(u8)*POINT_READ_BUF );
 
 
@@ -706,7 +703,6 @@ static void fts_touch_irq_work(void)
 	if (ret == 0) 
 		fts_report_value(fts_wq_data);
 	
-	enable_irq(fts_wq_data->client->irq);
 }
 
 /*******************************************************************************
@@ -1993,7 +1989,6 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 	/* check the controller id */
 	reg_addr = FTS_REG_ID;
 	err = fts_i2c_read(client, &reg_addr, 1, &reg_value, 1);
-	TP_chip_check = err;
 	if (err < 0) {
 		dev_err(&client->dev, "version read failed");
 		goto exit_i2c_read_failed;
@@ -2193,10 +2188,6 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 	printk("********************Enter CTP Auto Upgrade********************\n");
 	INIT_WORK(&data->update_fw_work, fts_update_fw_work);
 	queue_work(data->ts_workqueue, &data->update_fw_work);
-#endif
-
-#if defined(CONFIG_LETV_HW_DEV_DCT)
-	set_hw_dev_flag(DEV_PERIPHIAL_TOUCH_PANEL);
 #endif
 
 	return 0;
